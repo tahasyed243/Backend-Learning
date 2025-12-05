@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/public/STK Logo.png" />
+  <title>Dashboard || STK</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @layer utilities {
+      .animate-slide-in {
+        transform: translateX(100%);
+        transition: transform 0.5s ease, opacity 0.5s ease;
+      }
+      .opacity-100 {
+        opacity: 1 !important;
+        transform: translateX(0%) !important;
+      }
+      .fade-highlight {
+        background-color: #4ade80; /* Soft green */
+        transition: background-color 2s ease;
+      }
+      .scroll-highlight {
+        scroll-margin-top: 100px; /* top offset for smooth scroll */
+      }
+    }
+  </style>
+</head>
+<body class="bg-gray-900 min-h-screen text-white">
+  <!-- Navbar -->
+  <nav class="flex w-full items-center justify-between px-12 py-4 bg-gray-950 shadow-lg">
+    <div class="flex items-center gap-4">
+      <img src="/public/STK Logo White.png" alt="Logo" class="h-14 w-auto" />
+      <h1 class="text-2xl font-bold">STK User Dashboard</h1>
+    </div>
+    <div class="flex items-center gap-3">
+      <button id="themeToggle" class="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg flex items-center gap-2">🌙</button>
+      <button onclick="logout()" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg text-white font-semibold flex items-center gap-2">🔒 Logout</button>
+    </div>
+  </nav>
+
+  <div class="px-6 py-10 flex flex-col items-center">
+    <!-- Add User Card -->
+    <div class="bg-gray-800 p-6 shadow-xl rounded-xl w-full max-w-lg mb-10">
+      <h2 class="text-xl font-semibold mb-4">Add New User</h2>
+      <input id="newName" type="text" placeholder="Name" class="w-full mb-3 p-3 bg-gray-700 border border-gray-600 rounded" />
+      <input id="newEmail" type="email" placeholder="Email" class="w-full mb-3 p-3 bg-gray-700 border border-gray-600 rounded" />
+      <input id="newPassword" type="password" placeholder="Password" class="w-full mb-3 p-3 bg-gray-700 border border-gray-600 rounded" />
+      <button onclick="addUser()" class="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg font-semibold">Add User</button>
+    </div>
+
+    <!-- Table + Search -->
+    <div class="bg-gray-800 p-6 shadow-xl rounded-xl w-full max-w-5xl">
+      <div class="flex justify-between mb-4 items-center">
+        <h2 class="text-xl font-semibold">All Users</h2>
+        <input id="searchInput" onkeyup="filterUsers()" type="text" placeholder="Search..." class="p-2 w-64 bg-gray-700 border border-gray-600 rounded" />
+        <div class="flex gap-2">
+          <button onclick="getUsers()" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded">Refresh</button>
+          <button onclick="bulkDelete()" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded">Delete</button>
+        </div>
+      </div>
+
+      <table class="w-full border-collapse">
+        <thead>
+          <tr class="bg-gray-700 text-left">
+            <th class="p-2 border border-gray-600"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)" /></th>
+            <th class="p-2 border border-gray-600 cursor-pointer" onclick="sortUsers('name')">Name <span id="sortName">⬍</span></th>
+            <th class="p-2 border border-gray-600 cursor-pointer" onclick="sortUsers('email')">Email <span id="sortEmail">⬍</span></th>
+            <th class="p-2 border border-gray-600">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="usersTable"></tbody>
+      </table>
+
+      <div class="flex justify-center gap-4 mt-4">
+        <button id="prevBtn" onclick="prevPage()" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded">Previous</button>
+        <span id="pageInfo" class="py-2"></span>
+        <button id="nextBtn" onclick="nextPage()" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded">Next</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Update Modal -->
+  <div id="updateModal" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 hidden">
+    <div class="bg-gray-800 p-6 rounded-xl w-96 relative">
+      <h2 class="text-xl font-semibold mb-4">Update User</h2>
+      <input id="updateName" type="text" placeholder="Name" class="w-full mb-3 p-3 bg-gray-700 border border-gray-600 rounded" />
+      <input id="updateEmail" type="email" placeholder="Email" class="w-full mb-3 p-3 bg-gray-700 border border-gray-600 rounded" />
+      <input id="updatePassword" type="password" placeholder="Password (leave blank to keep same)" class="w-full mb-3 p-3 bg-gray-700 border border-gray-600 rounded" />
+      <div class="flex justify-end gap-3 mt-4">
+        <button onclick="closeModal()" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded">Cancel</button>
+        <button id="saveUpdateBtn" class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded text-white">Save</button>
+      </div>
+      <button onclick="closeModal()" class="absolute top-3 right-3 text-white text-lg font-bold">✖</button>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toastContainer" class="fixed top-5 right-5 flex flex-col gap-3 z-50"></div>
+
+  <script>
+    const API = "http://localhost:5000";
+    const token = localStorage.getItem("token");
+    if (!token) window.location.href = "test.html";
+
+    let usersData = [];
+    let sortDirection = { name: true, email: true };
+    let currentUpdateId = null;
+    let currentPage = 1;
+    const pageSize = 5;
+    let lastUpdatedId = null;
+
+    function showToast(message, type="info") {
+      const toastContainer = document.getElementById("toastContainer");
+      const colors = { info:"bg-blue-500", success:"bg-green-500", error:"bg-red-500", warn:"bg-yellow-500" };
+      const toast = document.createElement("div");
+      toast.className = `text-white px-4 py-2 rounded shadow-lg ${colors[type]} opacity-0 animate-slide-in`;
+      toast.innerText = message;
+      toastContainer.appendChild(toast);
+      setTimeout(()=> toast.classList.add("opacity-100"), 10);
+      setTimeout(()=> { toast.classList.remove("opacity-100"); setTimeout(()=> toast.remove(),500); }, 3000);
+    }
+
+    // Theme toggle
+    const themeToggle = document.getElementById("themeToggle");
+    const savedTheme = localStorage.getItem("theme");
+    if (savedTheme==="light") applyLightTheme(); else applyDarkTheme();
+    themeToggle.addEventListener("click", ()=> {
+      if(document.body.classList.contains("bg-gray-900")) applyLightTheme();
+      else applyDarkTheme();
+    });
+    function applyLightTheme(){
+      document.body.classList.replace("bg-gray-900","bg-white");
+      document.body.classList.replace("text-white","text-black");
+      document.querySelectorAll(".bg-gray-800").forEach(c=>c.classList.replace("bg-gray-800","bg-gray-100"));
+      themeToggle.innerText="☀️"; localStorage.setItem("theme","light");
+    }
+    function applyDarkTheme(){
+      document.body.classList.replace("bg-white","bg-gray-900");
+      document.body.classList.replace("text-black","text-white");
+      document.querySelectorAll(".bg-gray-100").forEach(c=>c.classList.replace("bg-gray-100","bg-gray-800"));
+      themeToggle.innerText="🌙"; localStorage.setItem("theme","dark");
+    }
+
+    async function getUsers(){
+      try{
+        const res = await fetch(`${API}/get-users`, { headers:{Authorization:"Bearer "+token} });
+        usersData = await res.json();
+        currentPage=1;
+        renderUsers(usersData);
+      } catch(err){ showToast("Error loading users","error"); }
+    }
+
+    function renderUsers(data){
+      const tbody = document.getElementById("usersTable");
+      tbody.innerHTML="";
+      const start=(currentPage-1)*pageSize, end=start+pageSize;
+      const paginated = data.slice(start,end);
+      paginated.forEach(u=>{
+        tbody.innerHTML += `
+          <tr class="hover:bg-gray-700 transition scroll-highlight ${u._id === lastUpdatedId ? 'fade-highlight' : ''}" data-id="${u._id}">
+            <td class="p-3 border border-gray-700"><input type="checkbox" class="userCheckbox" value="${u._id}" /></td>
+            <td class="p-3 border border-gray-700">${u.name}</td>
+            <td class="p-3 border border-gray-700">${u.email}</td>
+            <td class="p-3 border border-gray-700 flex gap-2">
+              <button onclick="openModal('${u._id}','${u.name}','${u.email}')" class="bg-yellow-500 hover:bg-yellow-600 px-3 py-1 rounded">Update</button>
+              <button onclick="deleteUser('${u._id}')" class="bg-red-600 hover:bg-red-700 px-3 py-1 rounded">Delete</button>
+            </td>
+          </tr>`;
+      });
+
+      // Scroll to updated row
+      if(lastUpdatedId){
+        const updatedRow = tbody.querySelector(`tr[data-id="${lastUpdatedId}"]`);
+        if(updatedRow){
+          updatedRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          setTimeout(() => {
+            updatedRow.classList.remove("fade-highlight");
+          }, 2000); // slow fade
+        }
+        lastUpdatedId = null;
+      }
+
+      document.getElementById("pageInfo").innerText=`Page ${currentPage} of ${Math.ceil(data.length/pageSize)}`;
+      document.getElementById("prevBtn").disabled=currentPage===1;
+      document.getElementById("nextBtn").disabled=currentPage>=Math.ceil(data.length/pageSize);
+    }
+
+    function nextPage(){ currentPage++; renderUsers(usersData); }
+    function prevPage(){ currentPage--; renderUsers(usersData); }
+
+    function filterUsers(){
+      const q=document.getElementById("searchInput").value.toLowerCase();
+      const filtered = usersData.filter(u=>u.name.toLowerCase().includes(q)||u.email.toLowerCase().includes(q));
+      currentPage=1; renderUsers(filtered);
+    }
+
+    function sortUsers(field){
+      usersData.sort((a,b)=>{
+        if(a[field].toLowerCase()<b[field].toLowerCase()) return sortDirection[field]? -1:1;
+        if(a[field].toLowerCase()>b[field].toLowerCase()) return sortDirection[field]? 1:-1;
+        return 0;
+      });
+      sortDirection[field]=!sortDirection[field];
+      document.getElementById(`sort${field.charAt(0).toUpperCase()+field.slice(1)}`).innerText=sortDirection[field]?"⬆️":"⬇️";
+      renderUsers(usersData);
+    }
+
+    async function addUser(){
+      const name=newName.value.trim(), email=newEmail.value.trim(), password=newPassword.value.trim();
+      if(!name||!email||!password) return showToast("All fields required!","warn");
+      try{
+        const res = await fetch(`${API}/register`,{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({name,email,password})
+        });
+        const data = await res.json();
+        showToast(data.message,"success");
+        lastUpdatedId = data.user?._id || null;
+        getUsers();
+      } catch(err){ showToast("Error adding user","error"); }
+    }
+
+    function openModal(id,name,email){
+      currentUpdateId=id; updateName.value=name; updateEmail.value=email; updatePassword.value="";
+      updateModal.classList.remove("hidden");
+    }
+    function closeModal(){ updateModal.classList.add("hidden"); }
+
+    saveUpdateBtn.addEventListener("click", async ()=>{
+      const name=updateName.value.trim(), email=updateEmail.value.trim(), password=updatePassword.value.trim();
+      if(!name||!email) return showToast("Name & Email required","warn");
+      const payload={name,email}; if(password) payload.password=password;
+      try{
+        const res = await fetch(`${API}/update-user/${currentUpdateId}`,{
+          method:"PUT",
+          headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},
+          body:JSON.stringify(payload)
+        });
+        const data = await res.json();
+        showToast(data.message,"success");
+        lastUpdatedId = currentUpdateId;
+        closeModal();
+        getUsers();
+      } catch(err){ showToast("Error updating user","error"); }
+    });
+
+    async function deleteUser(id){
+      if(!confirm("Delete this user?")) return;
+      try{
+        const res = await fetch(`${API}/delete-user/${id}`,{
+          method:"DELETE",
+          headers:{Authorization:"Bearer "+token}
+        });
+        const data = await res.json();
+        showToast(data.message,"success");
+        getUsers();
+      } catch(err){ showToast("Error deleting user","error"); }
+    }
+
+    function toggleSelectAll(cb){
+      document.querySelectorAll(".userCheckbox").forEach(c=>c.checked=cb.checked);
+    }
+
+    async function bulkDelete(){
+      const selected = Array.from(document.querySelectorAll(".userCheckbox:checked")).map(c=>c.value);
+      if(selected.length===0) return showToast("Select at least one user!","warn");
+      if(!confirm(`Delete ${selected.length} user(s)?`)) return;
+      try{
+        await Promise.all(selected.map(id=>fetch(`${API}/delete-user/${id}`,{
+          method:"DELETE",
+          headers:{Authorization:"Bearer "+token}
+        })));
+        showToast("Selected users deleted!","success");
+        getUsers();
+      } catch(err){ showToast("Error deleting users","error"); }
+    }
+
+    function logout(){ localStorage.removeItem("token"); window.location.href="test.html"; }
+
+    getUsers();
+  </script>
+</body>
+</html>
