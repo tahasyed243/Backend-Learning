@@ -5,7 +5,8 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "deploy": "gh-pages -d public"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.17",
@@ -17,5 +18,8 @@
     "lucide-react": "^0.556.0",
     "mongoose": "^7.4.0",
     "tailwindcss": "^4.1.17"
+  },
+  "devDependencies": {
+    "gh-pages": "^6.3.0"
   }
 }
